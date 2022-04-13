@@ -1,7 +1,7 @@
 
 # By default, 0: use DOW_30_TICKER (US), 1: use CSI_300_TICKER (CHINA),
 # except that users provide explicit tickers
-SELECT_REGION = 1
+SELECT_REGION = 0
 
 
 # directory
