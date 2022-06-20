@@ -23,8 +23,8 @@ class AlpacaProcessor:
         self.start = start_date
         self.end = end_date
         self.time_interval = time_interval
-
         NY = "America/New_York"
+        NY_TZ = pytz.timezone(NY)
         start_date = pd.Timestamp(start_date, tz=NY)
         end_date = pd.Timestamp(end_date, tz=NY) + pd.Timedelta(days=1)
         date = start_date
@@ -49,8 +49,8 @@ class AlpacaProcessor:
             if date.isoformat()[-14:-6] != "00:00:00":
                 raise ValueError("Timezone Error")
 
-        data_df['timestamp'] = data_df['timestamp'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S'))
-
+        #data_df['timestamp'] = data_df['timestamp'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S'))
+        data_df['timestamp'] = data_df['timestamp'].apply(lambda x: x.astimezone(NY_TZ))
         return data_df
 
     def clean_data(self, df):
@@ -76,7 +76,6 @@ class AlpacaProcessor:
                 tmp_df.loc[tic_df.iloc[i]["timestamp"]] = tic_df.iloc[i][
                     ["open", "high", "low", "close", "volume"]
                 ]
-
             #if the close price of the first row is NaN
             if str(tmp_df.iloc[0]["close"]) == "nan":
                print('The price of the first row for ticker ', tic, ' is NaN. ',
@@ -244,12 +243,16 @@ class AlpacaProcessor:
                     turbulence_array = df[df.tic == tic]["turbulence"].values
                 if_first_time = False
             else:
-                price_array = np.hstack(
-                    [price_array, df[df.tic == tic][["close"]].values]
-                )
-                tech_array = np.hstack(
-                    [tech_array, df[df.tic == tic][tech_indicator_list].values]
-                )
+                try:
+                    price_array = np.hstack(
+                        [price_array, df[df.tic == tic][["close"]].values]
+                    )
+                    tech_array = np.hstack(
+                        [tech_array, df[df.tic == tic][tech_indicator_list].values]
+                    )
+                except ValueError:
+                    print(tic)
+                    raise
         print("Successfully transformed into array")
         return price_array, tech_array, turbulence_array
 

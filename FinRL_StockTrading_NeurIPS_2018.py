@@ -78,7 +78,8 @@ from finrl import config
 from finrl import config_tickers
 from finrl.main import check_and_make_directories
 import os
-
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -169,10 +170,12 @@ config.TRAIN_END_DATE
 #%%
 '''
 
-df = YahooDownloader(start_date = '2009-01-01',
-                     end_date = '2021-10-31',
-                     ticker_list = config_tickers.DOW_30_TICKER).fetch_data()
-
+#df = YahooDownloader(start_date = '2009-01-01',
+#                     end_date = '2021-10-31',
+#                     ticker_list = config_tickers.DOW_30_TICKER).fetch_data()
+#df.to_csv("dow.csv")
+df = pd.read_csv("dow.csv")
+print("Saved data to csv")
 
 print(f"config_tickers.DOW_30_TICKER: {config_tickers.DOW_30_TICKER}")
 
@@ -304,13 +307,13 @@ Model Training: 5 models, A2C DDPG, PPO, TD3, SAC
 
 
 #%%
-
-agent = DRLAgent(env = env_train)
-model_a2c = agent.get_model("a2c")
+if False:
+    agent = DRLAgent(env = env_train)
+    model_a2c = agent.get_model("a2c")
 
 #%%
 
-trained_a2c = agent.train_model(model=model_a2c,
+    trained_a2c = agent.train_model(model=model_a2c,
                              tb_log_name='a2c',
                              total_timesteps=50000)
 
@@ -318,31 +321,31 @@ trained_a2c = agent.train_model(model=model_a2c,
 ### Model 2: DDPG
 
 #%%
-
-agent = DRLAgent(env = env_train)
-model_ddpg = agent.get_model("ddpg")
+if False:
+    agent = DRLAgent(env = env_train)
+    model_ddpg = agent.get_model("ddpg")
 
 #%%
 
-trained_ddpg = agent.train_model(model=model_ddpg,
+    trained_ddpg = agent.train_model(model=model_ddpg,
                              tb_log_name='ddpg',
                              total_timesteps=50000)
 
 ### Model 3: PPO
 
-
-agent = DRLAgent(env = env_train)
-PPO_PARAMS = {
-    "n_steps": 2048,
-    "ent_coef": 0.01,
-    "learning_rate": 0.00025,
-    "batch_size": 128,
-}
-model_ppo = agent.get_model("ppo",model_kwargs = PPO_PARAMS)
+if False:
+    agent = DRLAgent(env = env_train)
+    PPO_PARAMS = {
+        "n_steps": 2048,
+        "ent_coef": 0.01,
+        "learning_rate": 0.00025,
+        "batch_size": 128,
+    }
+    model_ppo = agent.get_model("ppo",model_kwargs = PPO_PARAMS)
 
 #%%
 
-trained_ppo = agent.train_model(model=model_ppo,
+    trained_ppo = agent.train_model(model=model_ppo,
                              tb_log_name='ppo',
                              total_timesteps=50000)
 
@@ -350,17 +353,17 @@ trained_ppo = agent.train_model(model=model_ppo,
 
 ### Model 4: TD3
 
-
-agent = DRLAgent(env = env_train)
-TD3_PARAMS = {"batch_size": 100,
+if False:
+    agent = DRLAgent(env = env_train)
+    TD3_PARAMS = {"batch_size": 100,
               "buffer_size": 1000000,
               "learning_rate": 0.001}
 
-model_td3 = agent.get_model("td3",model_kwargs = TD3_PARAMS)
+    model_td3 = agent.get_model("td3",model_kwargs = TD3_PARAMS)
 
 #%%
 
-trained_td3 = agent.train_model(model=model_td3,
+    trained_td3 = agent.train_model(model=model_td3,
                              tb_log_name='td3',
                              total_timesteps=30000)
 
@@ -380,11 +383,12 @@ SAC_PARAMS = {
 model_sac = agent.get_model("sac",model_kwargs = SAC_PARAMS)
 
 
-trained_sac = agent.train_model(model=model_sac,
-                             tb_log_name='sac',
-                             total_timesteps=60000)
+#trained_sac = agent.train_model(model=model_sac,
+#                             tb_log_name='sac',
+#                             total_timesteps=60000)
 
-
+#ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+#trained_sac.save(os.path.join(config.TRAINED_MODEL_DIR, F"sac_{ts}.model"))
 '''
 ## Trading
 Assume that we have $1,000,000 initial capital at 2020-07-01. We use the DDPG model to trade Dow jones 30 stocks.
@@ -429,10 +433,20 @@ e_trade_gym = StockTradingEnv(df = trade, turbulence_threshold = 70,risk_indicat
 print(f"trade.head(): {trade.head()}")
 
 
-df_account_value, df_actions = DRLAgent.DRL_prediction(
+""" df_account_value, df_actions = DRLAgent.DRL_prediction(
     model=trained_sac,
-    environment = e_trade_gym)
+    environment = e_trade_gym) """
+from stable_baselines3 import SAC
 
+sac_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, "sac_20220616-1720.model"))
+df_account_value, df_actions = DRLAgent.DRL_prediction(
+    model=sac_model,
+    environment = e_trade_gym) 
+
+""" df_account_value, df_actions = DRLAgent.DRL_prediction_load_from_file(
+    model_name="sac",
+    cwd=os.path.join(config.TRAINED_MODEL_DIR, "sac_20220616-1720.model"),
+    environment = e_trade_gym) """
 
 print(f"df_account_value.shape: {df_account_value.shape}")
 
@@ -505,4 +519,4 @@ backtest_plot(df_account_value,
              baseline_end = df_account_value.loc[len(df_account_value)-1,'date'])
 
 
-
+plt.savefig("mygraph.png")

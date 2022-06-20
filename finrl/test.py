@@ -10,7 +10,7 @@ from finrl.config_tickers import DOW_30_TICKER
 from finrl.finrl_meta.env_stock_trading.env_stocktrading import StockTradingEnv
 
 
-def test(
+def test(data,
         start_date,
         end_date,
         ticker_list,
@@ -28,13 +28,14 @@ def test(
     from finrl.finrl_meta.data_processor import DataProcessor
 
     # fetch data
-    dp = DataProcessor(data_source, **kwargs)
-    data = dp.download_data(ticker_list, start_date, end_date, time_interval)
-    data = dp.clean_data(data)
-    data = dp.add_technical_indicator(data, technical_indicator_list)
+    dp = DataProcessor(data_source, technical_indicator_list, **kwargs)
+    if data is None:
+        data = dp.download_data(ticker_list, start_date, end_date, time_interval)
+        data = dp.clean_data(data)
+        data = dp.add_technical_indicator(data, technical_indicator_list)
 
-    if if_vix:
-        data = dp.add_vix(data)
+        if if_vix:
+            data = dp.add_vix(data)
     price_array, tech_array, turbulence_array = dp.df_to_array(data, if_vix)
 
     env_config = {

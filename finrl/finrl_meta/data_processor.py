@@ -8,7 +8,8 @@ from finrl.finrl_meta.data_processors.processor_yahoofinance import (
 
 
 class DataProcessor:
-    def __init__(self, data_source, **kwargs):
+    def __init__(self, data_source, technical_indicator_list, **kwargs):
+        self.tech_indicator_list = technical_indicator_list
         if data_source == "alpaca":
 
             try:

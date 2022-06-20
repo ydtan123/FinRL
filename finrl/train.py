@@ -25,15 +25,18 @@ def train(
         env,
         model_name,
         if_vix=True,
+        data=None,
         **kwargs
 ):
-    # download data
-    dp = DataProcessor(data_source, **kwargs)
-    data = dp.download_data(ticker_list, start_date, end_date, time_interval)
-    data = dp.clean_data(data)
-    data = dp.add_technical_indicator(data, technical_indicator_list)
-    if if_vix:
-        data = dp.add_vix(data)
+    dp = DataProcessor(data_source, technical_indicator_list=technical_indicator_list, **kwargs)
+    if data is None:
+        # download data
+        data = dp.download_data(ticker_list, start_date, end_date, time_interval)
+        data = dp.clean_data(data)
+        data = dp.add_technical_indicator(data, technical_indicator_list)
+        if if_vix:
+            data = dp.add_vix(data)
+
     price_array, tech_array, turbulence_array = dp.df_to_array(data, if_vix)
     env_config = {
         "price_array": price_array,

@@ -7,7 +7,7 @@ from gym import spaces
 from gym.utils import seeding
 from stable_baselines3.common.vec_env import DummyVecEnv
 from typing import List
-matplotlib.use("Agg")
+#matplotlib.use("Agg")
 
 # from stable_baselines3.common.logger import Logger, KVWriter, CSVOutputFormat
 
@@ -264,6 +264,7 @@ class StockTradingEnv(gym.Env):
                     index=False,
                 )
                 plt.close()
+
 
             # Add outputs to logger interface
             # logger.record("environment/portfolio_value", end_total_asset)

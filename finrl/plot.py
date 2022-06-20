@@ -9,6 +9,7 @@ from pyfolio import timeseries
 
 from finrl import config
 from finrl.finrl_meta.preprocessor.yahoodownloader import YahooDownloader
+from finrl.finrl_meta.preprocessor.preprocessors import DataReader
 
 
 def get_daily_return(df, value_col_name="account_value"):
@@ -52,9 +53,7 @@ def backtest_plot(
     df["date"] = pd.to_datetime(df["date"])
     test_returns = get_daily_return(df, value_col_name=value_col_name)
 
-    baseline_df = get_baseline(
-        ticker=baseline_ticker, start=baseline_start, end=baseline_end
-    )
+    baseline_df = DataReader.get_ohlcv([baseline_ticker], baseline_start, baseline_end, version=1)
 
     baseline_df["date"] = pd.to_datetime(baseline_df["date"], format="%Y-%m-%d")
     baseline_df = pd.merge(df[["date"]], baseline_df, how="left", on="date")
@@ -62,7 +61,7 @@ def backtest_plot(
     baseline_returns = get_daily_return(baseline_df, value_col_name="close")
 
     with pyfolio.plotting.plotting_context(font_scale=1.1):
-        pyfolio.create_full_tear_sheet(
+        fig = pyfolio.create_full_tear_sheet(
             returns=test_returns, benchmark_rets=baseline_returns, set_context=False
         )
 

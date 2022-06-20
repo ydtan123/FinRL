@@ -103,7 +103,6 @@ class StockTradingEnv(gym.Env):
         self.day += 1
         price = self.price_ary[self.day]
         self.stocks_cool_down += 1
-
         if self.turbulence_bool[self.day] == 0:
             min_action = int(self.max_stock * self.min_stock_rate)  # stock_cd
             for index in np.where(actions < -min_action)[0]:  # sell_index:

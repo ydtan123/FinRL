@@ -99,6 +99,7 @@ class DRLAgent:
         state = environment.reset()
         episode_returns = []  # the cumulative_return / initial_account
         episode_total_assets = [environment.initial_total_asset]
+        print(F"Max Step: {environment.max_step}, init asset: {environment.initial_total_asset}")
         with _torch.no_grad():
             for i in range(environment.max_step):
                 s_tensor = _torch.as_tensor((state,), device=device)
@@ -117,9 +118,12 @@ class DRLAgent:
                 episode_total_assets.append(total_asset)
                 episode_return = total_asset / environment.initial_total_asset
                 episode_returns.append(episode_return)
+                print(F"Step {i}: day {environment.day}, asset {total_asset} reward {reward}")
+                for s, p in zip(environment.stocks, environment.price_ary[environment.day]):
+                    print(F"Stock: {s}, Price: {p}")
                 if done:
                     break
-        print("Test Finished!")
+        print(F"Test {cwd} Finished!")
         # return episode total_assets on testing data
         print("episode_return", episode_return)
         return episode_total_assets

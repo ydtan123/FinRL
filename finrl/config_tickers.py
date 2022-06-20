@@ -7,6 +7,7 @@ DOW_30_TICKER = [
     "AXP",
     "AMGN",
     "AAPL",
+    'GOOG', # added to replace DOW
     "BA",
     "CAT",
     "CSCO",
@@ -33,7 +34,7 @@ DOW_30_TICKER = [
     "WBA",
     "WMT",
     "DIS",
-    "DOW"
+#    "DOW"
 ]
 
 # Nasdaq 100 constituents at 2019/01

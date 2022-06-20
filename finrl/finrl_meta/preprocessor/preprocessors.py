@@ -1,11 +1,45 @@
 import datetime
 
 import numpy as np
+import os
 import pandas as pd
 from finrl import config
 from finrl.finrl_meta.preprocessor.yahoodownloader import YahooDownloader
 from stockstats import StockDataFrame as Sdf
+from sqlalchemy import create_engine
 
+
+class DataReader(object):
+    table_data = {}
+
+    @classmethod
+    def read_table(cls, table):
+        engine = create_engine('mysql://django:django@localhost/stock')
+        cls.table_data[table] = pd.read_sql_table(table, engine)
+
+    @classmethod
+    def get_ohlcv(cls, ticks, start_date, end_date, version):
+        '''version=1: for finrl
+           version=2: for elegantrl'''
+        table_name = 'prediction_dailyprice'
+        if len(cls.table_data) == 0:
+            cls.read_table(table_name)
+        table = cls.table_data[table_name]
+        data = table.loc[(table['Tick'].isin(ticks)) & (table['Date'] >= start_date) & (table['Date'] <= end_date)][
+            ['Tick', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+        date_field = 'timestamp' if version==2 else 'date'
+        data = data.rename(columns={
+            'Tick': 'tic', 
+            'Date': date_field, 
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close', 
+            'Volume': 'volume'}).sort_values(by=[date_field, "tic"])
+        if version==1:
+            data["day"] = data["date"].dt.dayofweek
+            data["date"] = data.date.apply(lambda x: x.strftime("%Y-%m-%d"))
+        return data
 
 def load_dataset(*, file_name: str) -> pd.DataFrame:
     """
@@ -186,12 +220,10 @@ class FeatureEngineer:
         :return: (df) pandas dataframe
         """
         df = data.copy()
-        df_vix = YahooDownloader(
-            start_date=df.date.min(), end_date=df.date.max(), ticker_list=["^VIX"]
-        ).fetch_data()
+        df_vix = DataReader.get_ohlcv(['^VIX'], start_date=df.date.min(), end_date=df.date.max(), version=1)
+
         vix = df_vix[["date", "close"]]
         vix.columns = ["date", "vix"]
-
         df = df.merge(vix, on="date")
         df = df.sort_values(["date", "tic"]).reset_index(drop=True)
         return df
