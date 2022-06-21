@@ -95,10 +95,10 @@ The action space describes the allowed actions that the agent interacts with the
 # Trade data split: 2020-07-01 to 2021-10-31
 '''
 
-def get_args(data):
+def get_args(ticks):
     print(f"config.INDICATORS: {config.INDICATORS}")
 
-    stock_dimension = len(data.tic.unique())
+    stock_dimension = len(ticks)
     state_space = 1 + 2*stock_dimension + len(config.INDICATORS)*stock_dimension
     print(f"Stock Dimension: {stock_dimension}, State Space: {state_space}")
 
@@ -121,8 +121,8 @@ def get_args(data):
     return env_kwargs
 
 
-def train_model(model_name, train):
-    env_kwargs = get_args(train)
+def train_model(ticks, model_name, train):
+    env_kwargs = get_args(ticks)
     e_train_gym = StockTradingEnv(df = train, **env_kwargs)
 
     env_train, _ = e_train_gym.get_sb_env()
@@ -150,38 +150,23 @@ def train_model(model_name, train):
     model_args = PARAMS[model_name] if model_name in PARAMS else None
     agent = DRLAgent(env = env_train)
     model = agent.get_model(model_name, model_kwargs=model_args)
-    """     trained_model = agent.train_model(
+    trained_model = agent.train_model(
         model=model,
         tb_log_name=model_name,
-        total_timesteps=60000) """
-    trained_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, "sac_20220617-1037.model"))
+        total_timesteps=60000) 
+    #trained_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, "sac_20220617-1037.model"))
 
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
-    #trained_model.save(os.path.join(config.TRAINED_MODEL_DIR, F"{model_name}_{ts}.model"))
+    model_file = "F{model_name}_{ts}.model"
+    trained_model.save(os.path.join(config.TRAINED_MODEL_DIR, model_file))
 
-    return trained_model, env_kwargs
+    return model_file
 
-'''
-## Trading
-Assume that we have $1,000,000 initial capital at 2020-07-01. We use the DDPG model to trade Dow jones 30 stocks.
-### Set turbulence threshold
-Set the turbulence threshold to be greater than the maximum of insample turbulence data, if current turbulence index is greater than the threshold, then we assume that the current market is volatile
-'''
-
-def back_test(model_name, ticks, start_date, end_date, split_date, need_train=False):
-    processed_full, train, trade = prepare_data(ticks, start_date, end_date, split_date)
-
-    if need_train:
-        trained_model, env_kwargs = train_model(model_name, train)
-
-    data_risk_indicator = processed_full[(processed_full.date<'2020-07-01') & (processed_full.date>='2009-01-01')]
-    insample_risk_indicator = data_risk_indicator.drop_duplicates(subset=['date'])
-    insample_risk_indicator.vix.describe()
-    insample_risk_indicator.vix.quantile(0.996)
-    insample_risk_indicator.turbulence.describe()
-    insample_risk_indicator.turbulence.quantile(0.996)
+def test(ticks, model_file, trade):
+    env_kwargs = get_args(ticks)
     e_trade_gym = StockTradingEnv(df = trade, turbulence_threshold = 70,risk_indicator_col='vix', **env_kwargs)
-    print(f"trade.head(): {trade.head()}")
+
+    trained_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, model_file))
     df_account_value, df_actions = DRLAgent.DRL_prediction(
         model=trained_model,
         environment = e_trade_gym)
@@ -189,7 +174,32 @@ def back_test(model_name, ticks, start_date, end_date, split_date, need_train=Fa
     print(f"df_account_value.shape: {df_account_value.shape}")
     print(f"df_account_value.tail(): {df_account_value.tail()}")
     print(f"df_actions.head(): {df_actions.head()}")
+    return df_account_value, df_actions
+    
+'''
+## Trading
+Assume that we have $1,000,000 initial capital at 2020-07-01. We use the DDPG model to trade Dow jones 30 stocks.
+### Set turbulence threshold
+Set the turbulence threshold to be greater than the maximum of insample turbulence data, if current turbulence index is greater than the threshold, then we assume that the current market is volatile
+'''
 
+def back_test(model_name, ticks, start_date, end_date, split_date, need_train=True):
+    processed_full, train, trade = prepare_data(ticks, start_date, end_date, split_date)
+
+    if need_train:
+        model_file = train_model(ticks, model_name, train)
+    else:
+        model_file = model_name
+    data_risk_indicator = processed_full[(processed_full.date<'2020-07-01') & (processed_full.date>='2009-01-01')]
+    insample_risk_indicator = data_risk_indicator.drop_duplicates(subset=['date'])
+    insample_risk_indicator.vix.describe()
+    insample_risk_indicator.vix.quantile(0.996)
+    insample_risk_indicator.turbulence.describe()
+    insample_risk_indicator.turbulence.quantile(0.996)
+    print(f"trade.head(): {trade.head()}")
+    
+
+    df_account_value, df_actions = test(ticks, model_file, trade)
 
     print("==============Get Backtest Results===========")
     now = datetime.datetime.now().strftime('%Y%m%d-%Hh%M')
@@ -284,7 +294,7 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.INFO)
     
     if args.ticks == 'DOW30':
-        ticks = config_tickers.DOW_30_TICKER
+        ticks = config_tickers.DOW_30_TICKER[:5]
     else:
         ticks = args.ticks.split(',')
 
