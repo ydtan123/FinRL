@@ -38,7 +38,7 @@ from finrl.config import (
 )
 
 
-def prepare_data(ticks, start_date, end_date):
+def prepare_data(ticks, start_date, end_date, split_date):
 
     df = DataReader.get_ohlcv(ticks, start_date, end_date, version=1).sort_values(['date','tic'],ignore_index=True)
     print(f"df.shape: {df.shape}")
@@ -55,7 +55,6 @@ def prepare_data(ticks, start_date, end_date):
     list_ticker = processed["tic"].unique().tolist()
     list_date = list(pd.date_range(processed['date'].min(),processed['date'].max()).astype(str))
     combination = list(itertools.product(list_date,list_ticker))
-
     processed_full = pd.DataFrame(combination,columns=["date","tic"]).merge(processed,on=["date","tic"],how="left")
     processed_full = processed_full[processed_full['date'].isin(processed['date'])]
     processed_full = processed_full.sort_values(['date','tic'])
@@ -64,8 +63,8 @@ def prepare_data(ticks, start_date, end_date):
 
     processed_full.sort_values(['date','tic'],ignore_index=True).head(10)
 
-    train = data_split(processed_full, '2009-01-01','2020-07-01')
-    trade = data_split(processed_full, '2020-07-01','2021-10-31')
+    train = data_split(processed_full, start_date, split_date)
+    trade = data_split(processed_full, split_date, end_date)
     print(f"len(train): {len(train)}")
     print(f"len(trade): {len(trade)}")
     print(f"train.tail(): {train.tail()}")
@@ -96,11 +95,10 @@ The action space describes the allowed actions that the agent interacts with the
 # Trade data split: 2020-07-01 to 2021-10-31
 '''
 
-
-def train_model(model_name, train):
+def get_args(data):
     print(f"config.INDICATORS: {config.INDICATORS}")
 
-    stock_dimension = len(train.tic.unique())
+    stock_dimension = len(data.tic.unique())
     state_space = 1 + 2*stock_dimension + len(config.INDICATORS)*stock_dimension
     print(f"Stock Dimension: {stock_dimension}, State Space: {state_space}")
 
@@ -120,7 +118,11 @@ def train_model(model_name, train):
         "reward_scaling": 1e-4,
         "make_plots": True
     }
+    return env_kwargs
 
+
+def train_model(model_name, train):
+    env_kwargs = get_args(train)
     e_train_gym = StockTradingEnv(df = train, **env_kwargs)
 
     env_train, _ = e_train_gym.get_sb_env()
@@ -166,10 +168,11 @@ Assume that we have $1,000,000 initial capital at 2020-07-01. We use the DDPG mo
 Set the turbulence threshold to be greater than the maximum of insample turbulence data, if current turbulence index is greater than the threshold, then we assume that the current market is volatile
 '''
 
-def back_test(model_name, ticks, start_date, end_date):
-    processed_full, train, trade = prepare_data(ticks, start_date, end_date)
+def back_test(model_name, ticks, start_date, end_date, split_date, need_train=False):
+    processed_full, train, trade = prepare_data(ticks, start_date, end_date, split_date)
 
-    trained_model, env_kwargs = train_model(model_name, train)
+    if need_train:
+        trained_model, env_kwargs = train_model(model_name, train)
 
     data_risk_indicator = processed_full[(processed_full.date<'2020-07-01') & (processed_full.date>='2009-01-01')]
     insample_risk_indicator = data_risk_indicator.drop_duplicates(subset=['date'])
@@ -268,7 +271,9 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--start", type=str,
                         help="start date of daily price", default='2009-01-01')
     parser.add_argument("-e", "--end", type=str,
-                        help="end date of daily price", default='2021-10-31')
+                        help="end date of daily price", default='2022-06-10')
+    parser.add_argument("--split-date", type=str,
+                        help="split date of daily price", default='2021-07-01')
     parser.add_argument("-m", "--model-name", type=str,
                         help="model name", default='')
     parser.add_argument("-r", "--force-refresh",
@@ -285,4 +290,4 @@ if __name__ == '__main__':
 
     check_and_make_directories([DATA_SAVE_DIR, TRAINED_MODEL_DIR, TENSORBOARD_LOG_DIR, RESULTS_DIR])
 
-    back_test(args.model_name, ticks, args.start, args.end)
+    back_test(args.model_name, ticks, args.start, args.end, args.split_date)
