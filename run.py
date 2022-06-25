@@ -18,7 +18,7 @@ import datetime
 from finrl.finrl_meta.preprocessor.yahoodownloader import YahooDownloader
 from finrl.finrl_meta.preprocessor.preprocessors import FeatureEngineer, data_split, DataReader
 from finrl.finrl_meta.env_stock_trading.env_stocktrading import StockTradingEnv
-from finrl.agents.stablebaselines3.models import DRLAgent
+from finrl.agents.stablebaselines3.models import DRLAgent, MODELS
 from finrl.finrl_meta.data_processor import DataProcessor
 
 from finrl.plot import backtest_stats, backtest_plot, get_daily_return, get_baseline
@@ -121,7 +121,8 @@ def get_args(ticks):
     return env_kwargs
 
 
-def train_model(ticks, model_name, train):
+def train_model(model_name, train):
+    ticks = train.tic.unique()
     env_kwargs = get_args(ticks)
     e_train_gym = StockTradingEnv(df = train, **env_kwargs)
 
@@ -143,7 +144,7 @@ def train_model(ticks, model_name, train):
         'sac': {
             "batch_size": 128,
             "buffer_size": 1000000,
-            "learning_rate": 0.0001,
+            "learning_rate": 0.00005,
             "learning_starts": 100,
             "ent_coef": "auto_0.1"}
     }
@@ -157,16 +158,25 @@ def train_model(ticks, model_name, train):
     #trained_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, "sac_20220617-1037.model"))
 
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
-    model_file = "F{model_name}_{ts}.model"
+    model_file = F"{model_name}_{ts}.model"
     trained_model.save(os.path.join(config.TRAINED_MODEL_DIR, model_file))
 
     return model_file
 
-def test(ticks, model_file, trade):
+def test(model_name, model_file, trade):
+    ticks = trade.tic.unique()
     env_kwargs = get_args(ticks)
-    e_trade_gym = StockTradingEnv(df = trade, turbulence_threshold = 70,risk_indicator_col='vix', **env_kwargs)
+    e_trade_gym = StockTradingEnv(
+        df = trade, 
+        turbulence_threshold = 70,
+        risk_indicator_col='vix',
+        model_name=model_file[:3], #only use the prefix in the model filename
+        mode="test",
+        iteration='',
+        **env_kwargs)
 
-    trained_model = SAC.load(os.path.join(config.TRAINED_MODEL_DIR, model_file))
+    #model = agent.get_model(model_name, model_kwargs=model_args)
+    trained_model = MODELS[model_name].load(os.path.join(config.TRAINED_MODEL_DIR, model_file))
     df_account_value, df_actions = DRLAgent.DRL_prediction(
         model=trained_model,
         environment = e_trade_gym)
@@ -183,13 +193,12 @@ Assume that we have $1,000,000 initial capital at 2020-07-01. We use the DDPG mo
 Set the turbulence threshold to be greater than the maximum of insample turbulence data, if current turbulence index is greater than the threshold, then we assume that the current market is volatile
 '''
 
-def back_test(model_name, ticks, start_date, end_date, split_date, need_train=True):
+def back_test(model_name, model_file, ticks, start_date, end_date, split_date, need_train=True):
     processed_full, train, trade = prepare_data(ticks, start_date, end_date, split_date)
 
     if need_train:
-        model_file = train_model(ticks, model_name, train)
-    else:
-        model_file = model_name
+        model_file = train_model(model_name, train)
+
     data_risk_indicator = processed_full[(processed_full.date<'2020-07-01') & (processed_full.date>='2009-01-01')]
     insample_risk_indicator = data_risk_indicator.drop_duplicates(subset=['date'])
     insample_risk_indicator.vix.describe()
@@ -199,7 +208,7 @@ def back_test(model_name, ticks, start_date, end_date, split_date, need_train=Tr
     print(f"trade.head(): {trade.head()}")
     
 
-    df_account_value, df_actions = test(ticks, model_file, trade)
+    df_account_value, df_actions = test(model_name, model_file, trade)
 
     print("==============Get Backtest Results===========")
     now = datetime.datetime.now().strftime('%Y%m%d-%Hh%M')
@@ -284,10 +293,12 @@ if __name__ == '__main__':
                         help="end date of daily price", default='2022-06-10')
     parser.add_argument("--split-date", type=str,
                         help="split date of daily price", default='2021-07-01')
-    parser.add_argument("-m", "--model-name", type=str,
-                        help="model name", default='')
+    parser.add_argument("-m", "--model-name", type=str, help="model name", default='')
+    parser.add_argument("--model-file", type=str, help="model file", default='')
     parser.add_argument("-r", "--force-refresh",
                         help="force refreshing all ticks", action='store_true')
+    parser.add_argument("--train",
+                        help="train a model first", action='store_true')
     args = parser.parse_args()
 
     if args.verbose:
@@ -300,4 +311,4 @@ if __name__ == '__main__':
 
     check_and_make_directories([DATA_SAVE_DIR, TRAINED_MODEL_DIR, TENSORBOARD_LOG_DIR, RESULTS_DIR])
 
-    back_test(args.model_name, ticks, args.start, args.end, args.split_date)
+    back_test(args.model_name, args.model_file, ticks, args.start, args.end, args.split_date, need_train=args.train)

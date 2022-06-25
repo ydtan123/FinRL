@@ -3,6 +3,7 @@
 import time
 
 import numpy as np
+import os
 import pandas as pd
 from stable_baselines3 import A2C, DDPG, PPO, SAC, TD3
 from stable_baselines3.common.callbacks import BaseCallback
@@ -211,7 +212,7 @@ class DRLEnsembleAgent:
     def get_validation_sharpe(iteration, model_name):
         """Calculate Sharpe ratio based on validation results"""
         df_total_value = pd.read_csv(
-            f"results/account_value_validation_{model_name}_{iteration}.csv"
+            os.path.join(config.RESULTS_DIR, f"account_value_validation_{model_name}_{iteration}.csv")
         )
         # If the agent did not make any transaction 
         if df_total_value["daily_return"].var()==0:
@@ -318,7 +319,7 @@ class DRLEnsembleAgent:
 
         df_last_state = pd.DataFrame({"last_state": last_state})
         df_last_state.to_csv(
-            f"results/last_state_{name}_{i}.csv", index=False
+            os.path.join(config.RESULTS_DIR, f"last_state_{name}_{i}.csv"), index=False
         )
         return last_state
 

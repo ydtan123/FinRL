@@ -26,7 +26,7 @@ class DataReader(object):
             cls.read_table(table_name)
         table = cls.table_data[table_name]
         data = table.loc[(table['Tick'].isin(ticks)) & (table['Date'] >= start_date) & (table['Date'] <= end_date)][
-            ['Tick', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+            ['Tick', 'Date', 'Open', 'High', 'Low', 'AdjClose', 'Volume']]
         date_field = 'timestamp' if version==2 else 'date'
         data = data.rename(columns={
             'Tick': 'tic', 
@@ -34,7 +34,7 @@ class DataReader(object):
             'Open': 'open',
             'High': 'high',
             'Low': 'low',
-            'Close': 'close', 
+            'AdjClose': 'close', 
             'Volume': 'volume'}).sort_values(by=[date_field, "tic"])
         if version==1:
             data["day"] = data["date"].dt.dayofweek

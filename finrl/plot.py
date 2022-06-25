@@ -12,13 +12,13 @@ from finrl.finrl_meta.preprocessor.yahoodownloader import YahooDownloader
 from finrl.finrl_meta.preprocessor.preprocessors import DataReader
 
 
-def get_daily_return(df, value_col_name="account_value"):
+def get_daily_return(df, value_col_name="account_value", column_name='daily_return'):
     df = deepcopy(df)
-    df["daily_return"] = df[value_col_name].pct_change(1)
+    df[column_name] = df[value_col_name].pct_change(1)
     df["date"] = pd.to_datetime(df["date"])
     df.set_index("date", inplace=True, drop=True)
     df.index = df.index.tz_localize("UTC")
-    return pd.Series(df["daily_return"], index=df.index)
+    return pd.Series(df[column_name], index=df.index)
 
 
 def convert_daily_return_to_pyfolio_ts(df):
@@ -56,9 +56,9 @@ def backtest_plot(
     baseline_df = DataReader.get_ohlcv([baseline_ticker], baseline_start, baseline_end, version=1)
 
     baseline_df["date"] = pd.to_datetime(baseline_df["date"], format="%Y-%m-%d")
-    baseline_df = pd.merge(df[["date"]], baseline_df, how="left", on="date")
+    baseline_df = pd.merge(df[["date"]], baseline_df, how="left", on="date")  # match dates with backtest data
     baseline_df = baseline_df.fillna(method="ffill").fillna(method="bfill")
-    baseline_returns = get_daily_return(baseline_df, value_col_name="close")
+    baseline_returns = get_daily_return(baseline_df, value_col_name="close", column_name=F'{baseline_ticker} daily return')
 
     with pyfolio.plotting.plotting_context(font_scale=1.1):
         fig = pyfolio.create_full_tear_sheet(

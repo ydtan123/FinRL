@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 from gym import spaces
 from gym.utils import seeding
+import os
 from stable_baselines3.common.vec_env import DummyVecEnv
 from typing import List
+from finrl import config
 #matplotlib.use("Agg")
 
 # from stable_baselines3.common.logger import Logger, KVWriter, CSVOutputFormat
@@ -188,7 +190,7 @@ class StockTradingEnv(gym.Env):
 
     def _make_plot(self):
         plt.plot(self.asset_memory, "r")
-        plt.savefig("results/account_value_trade_{}.png".format(self.episode))
+        plt.savefig(os.path.join(config.RESULTS_DIR, F"account_value_trade_{self.episode}.png"))
         plt.close()
 
     def step(self, actions):
@@ -240,29 +242,17 @@ class StockTradingEnv(gym.Env):
             if (self.model_name != "") and (self.mode != ""):
                 df_actions = self.save_action_memory()
                 df_actions.to_csv(
-                    "results/actions_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    )
-                )
+                    os.path.join(config.RESULTS_DIR, F"actions_{self.mode}_{self.model_name}_{self.iteration}.csv"))
                 df_total_value.to_csv(
-                    "results/account_value_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    ),
-                    index=False,
-                )
+                    os.path.join(config.RESULTS_DIR, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.csv"),
+                    index=False)
                 df_rewards.to_csv(
-                    "results/account_rewards_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    ),
-                    index=False,
-                )
+                    os.path.join(config.RESULTS_DIR, F"account_rewards_{self.mode}_{self.model_name}_{self.iteration}.csv"),
+                    index=False)
                 plt.plot(self.asset_memory, "r")
                 plt.savefig(
-                    "results/account_value_{}_{}_{}.png".format(
-                        self.mode, self.model_name, self.iteration
-                    ),
-                    index=False,
-                )
+                    os.path.join(config.RESULTS_DIR, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.png"),
+                    index=False)
                 plt.close()
 
 
@@ -277,9 +267,7 @@ class StockTradingEnv(gym.Env):
 
         else:
             actions = actions * self.hmax  # actions initially is scaled between 0 to 1
-            actions = actions.astype(
-                int
-            )  # convert into integer because we can't by fraction of shares
+            actions = actions.astype(int)  # convert into integer because we can't by fraction of shares
             if self.turbulence_threshold is not None:
                 if self.turbulence >= self.turbulence_threshold:
                     actions = np.array([-self.hmax] * self.stock_dim)
