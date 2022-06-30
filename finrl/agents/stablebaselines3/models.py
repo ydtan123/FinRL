@@ -209,10 +209,10 @@ class DRLEnsembleAgent:
         return model
 
     @staticmethod
-    def get_validation_sharpe(iteration, model_name):
+    def get_validation_sharpe(results_dir, iteration, model_name):
         """Calculate Sharpe ratio based on validation results"""
         df_total_value = pd.read_csv(
-            os.path.join(config.RESULTS_DIR, f"account_value_validation_{model_name}_{iteration}.csv")
+            os.path.join(results_dir, f"account_value_validation_{model_name}_{iteration}.csv")
         )
         # If the agent did not make any transaction 
         if df_total_value["daily_return"].var()==0:
@@ -243,6 +243,7 @@ class DRLEnsembleAgent:
             action_space,
             tech_indicator_list,
             print_verbosity,
+            results_dir
     ):
 
         self.df = df
@@ -265,6 +266,7 @@ class DRLEnsembleAgent:
         self.action_space = action_space
         self.tech_indicator_list = tech_indicator_list
         self.print_verbosity = print_verbosity
+        self.results_dir = results_dir
 
     def DRL_validation(self, model, test_data, test_env, test_obs):
         """validation process"""
@@ -304,6 +306,7 @@ class DRLEnsembleAgent:
                     mode="trade",
                     iteration=iter_num,
                     print_verbosity=self.print_verbosity,
+                    results_dir=self.results_dir
                 )
             ]
         )
@@ -439,6 +442,7 @@ class DRLEnsembleAgent:
                         action_space=self.action_space,
                         tech_indicator_list=self.tech_indicator_list,
                         print_verbosity=self.print_verbosity,
+                        results_dir=self.results_dir
                     )
                 ]
             )
@@ -500,6 +504,7 @@ class DRLEnsembleAgent:
                         model_name="A2C",
                         mode="validation",
                         print_verbosity=self.print_verbosity,
+                        results_dir=self.results_dir
                     )
                 ]
             )
@@ -510,7 +515,7 @@ class DRLEnsembleAgent:
                 test_env=val_env_a2c,
                 test_obs=val_obs_a2c,
             )
-            sharpe_a2c = self.get_validation_sharpe(i, model_name="A2C")
+            sharpe_a2c = self.get_validation_sharpe(self.results_dir, i, model_name="A2C")
             print("A2C Sharpe Ratio: ", sharpe_a2c)
 
             print("======PPO Training========")
@@ -549,6 +554,7 @@ class DRLEnsembleAgent:
                         model_name="PPO",
                         mode="validation",
                         print_verbosity=self.print_verbosity,
+                        results_dir=self.results_dir
                     )
                 ]
             )
@@ -559,7 +565,7 @@ class DRLEnsembleAgent:
                 test_env=val_env_ppo,
                 test_obs=val_obs_ppo,
             )
-            sharpe_ppo = self.get_validation_sharpe(i, model_name="PPO")
+            sharpe_ppo = self.get_validation_sharpe(self.results_dir, i, model_name="PPO")
             print("PPO Sharpe Ratio: ", sharpe_ppo)
 
             print("======DDPG Training========")
@@ -601,6 +607,7 @@ class DRLEnsembleAgent:
                         model_name="DDPG",
                         mode="validation",
                         print_verbosity=self.print_verbosity,
+                        results_dir=self.results_dir
                     )
                 ]
             )
@@ -611,7 +618,7 @@ class DRLEnsembleAgent:
                 test_env=val_env_ddpg,
                 test_obs=val_obs_ddpg,
             )
-            sharpe_ddpg = self.get_validation_sharpe(i, model_name="DDPG")
+            sharpe_ddpg = self.get_validation_sharpe(self.results_dir, i, model_name="DDPG")
 
             ppo_sharpe_list.append(sharpe_ppo)
             a2c_sharpe_list.append(sharpe_a2c)

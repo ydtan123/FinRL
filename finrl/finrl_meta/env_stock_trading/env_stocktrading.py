@@ -1,3 +1,4 @@
+from datetime import datetime
 import gym
 import matplotlib
 import matplotlib.pyplot as plt
@@ -8,7 +9,6 @@ from gym.utils import seeding
 import os
 from stable_baselines3.common.vec_env import DummyVecEnv
 from typing import List
-from finrl import config
 #matplotlib.use("Agg")
 
 # from stable_baselines3.common.logger import Logger, KVWriter, CSVOutputFormat
@@ -42,9 +42,12 @@ class StockTradingEnv(gym.Env):
         model_name="",
         mode="",
         iteration="",
+        results_dir='results',
     ):
         self.day = day
         self.df = df
+        self.ticks = self.df.tic.unique()
+        self.num_ticks = len(self.ticks)
         self.stock_dim = stock_dim
         self.hmax = hmax
         self.num_stock_shares=num_stock_shares
@@ -72,6 +75,8 @@ class StockTradingEnv(gym.Env):
         self.iteration = iteration
         # initalize state
         self.state = self._initiate_state()
+
+        self.results_dir = results_dir
 
         # initialize reward
         self.reward = 0
@@ -189,16 +194,17 @@ class StockTradingEnv(gym.Env):
         return buy_num_shares
 
     def _make_plot(self):
-        plt.plot(self.asset_memory, "r")
-        plt.savefig(os.path.join(config.RESULTS_DIR, F"account_value_trade_{self.episode}.png"))
+        fig, ax = plt.subplots()
+        ax.plot([datetime.strptime(d, '%Y-%m-%d') for d in self.date_memory], self.asset_memory, "r")
+        ax.xaxis_date() 
+        fig.autofmt_xdate()
+        plt.savefig(
+            os.path.join(self.results_dir, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.png"))
         plt.close()
 
     def step(self, actions):
         self.terminal = self.day >= len(self.df.index.unique()) - 1
         if self.terminal:
-            # print(f"Episode: {self.episode}")
-            if self.make_plots:
-                self._make_plot()
             end_total_asset = self.state[0] + sum(
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
@@ -229,31 +235,29 @@ class StockTradingEnv(gym.Env):
             df_rewards.columns = ["account_rewards"]
             df_rewards["date"] = self.date_memory[:-1]
             if self.episode % self.print_verbosity == 0:
+                print("="*40)
+                print(F"Summary of {self.model_name}, from {self.date_memory[0]} to {self.date_memory[-1]}")
                 print(f"day: {self.day}, episode: {self.episode}")
                 print(f"begin_total_asset: {self.asset_memory[0]:0.2f}")
                 print(f"end_total_asset: {end_total_asset:0.2f}")
+                print(f'return rate: {end_total_asset/self.asset_memory[0]-1:.2%}')
                 print(f"total_reward: {tot_reward:0.2f}")
                 print(f"total_cost: {self.cost:0.2f}")
                 print(f"total_trades: {self.trades}")
                 if df_total_value["daily_return"].std() != 0:
                     print(f"Sharpe: {sharpe:0.3f}")
-                print("=================================")
 
             if (self.model_name != "") and (self.mode != ""):
                 df_actions = self.save_action_memory()
-                df_actions.to_csv(
-                    os.path.join(config.RESULTS_DIR, F"actions_{self.mode}_{self.model_name}_{self.iteration}.csv"))
+                suffix = F"{self.mode}_{self.model_name}_{self.iteration}"
+                df_actions.to_csv(os.path.join(self.results_dir, F"actions_{suffix}.csv"))
                 df_total_value.to_csv(
-                    os.path.join(config.RESULTS_DIR, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.csv"),
+                    os.path.join(self.results_dir, F"account_value_{suffix}.csv"),
                     index=False)
                 df_rewards.to_csv(
-                    os.path.join(config.RESULTS_DIR, F"account_rewards_{self.mode}_{self.model_name}_{self.iteration}.csv"),
+                    os.path.join(self.results_dir, F"account_rewards_{suffix}.csv"),
                     index=False)
-                plt.plot(self.asset_memory, "r")
-                plt.savefig(
-                    os.path.join(config.RESULTS_DIR, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.png"),
-                    index=False)
-                plt.close()
+                self._make_plot()
 
 
             # Add outputs to logger interface
@@ -298,9 +302,9 @@ class StockTradingEnv(gym.Env):
             self.day += 1
             self.data = self.df.loc[self.day, :]
             if self.turbulence_threshold is not None:
-                if len(self.df.tic.unique()) == 1:
+                if self.num_ticks == 1:
                     self.turbulence = self.data[self.risk_indicator_col]
-                elif len(self.df.tic.unique()) > 1:
+                elif self.num_ticks > 1:
                     self.turbulence = self.data[self.risk_indicator_col].values[0]
             self.state = self._update_state()
 
@@ -353,7 +357,7 @@ class StockTradingEnv(gym.Env):
     def _initiate_state(self):
         if self.initial:
             # For Initial State
-            if len(self.df.tic.unique()) > 1:
+            if self.num_ticks > 1:
                 # for multiple stock
                 state = (
                     [self.initial_amount]
@@ -377,7 +381,7 @@ class StockTradingEnv(gym.Env):
                 )
         else:
             # Using Previous State
-            if len(self.df.tic.unique()) > 1:
+            if self.num_ticks > 1:
                 # for multiple stock
                 state = (
                     [self.previous_state[0]]
@@ -406,7 +410,7 @@ class StockTradingEnv(gym.Env):
         return state
 
     def _update_state(self):
-        if len(self.df.tic.unique()) > 1:
+        if self.num_ticks > 1:
             # for multiple stock
             state = (
                 [self.state[0]]
@@ -433,7 +437,7 @@ class StockTradingEnv(gym.Env):
         return state
 
     def _get_date(self):
-        if len(self.df.tic.unique()) > 1:
+        if self.num_ticks > 1:
             date = self.data.date.unique()[0]
         else:
             date = self.data.date
@@ -441,7 +445,7 @@ class StockTradingEnv(gym.Env):
 
     # add save_state_memory to preserve state in the trading process 
     def save_state_memory(self):
-        if len(self.df.tic.unique()) > 1:
+        if self.num_ticks > 1:
             # date and close price length must match actions length
             date_list = self.date_memory[:-1]
             df_date = pd.DataFrame(date_list)
@@ -469,7 +473,7 @@ class StockTradingEnv(gym.Env):
         return df_account_value
 
     def save_action_memory(self):
-        if len(self.df.tic.unique()) > 1:
+        if self.num_ticks > 1:
             # date and close price length must match actions length
             date_list = self.date_memory[:-1]
             df_date = pd.DataFrame(date_list)
