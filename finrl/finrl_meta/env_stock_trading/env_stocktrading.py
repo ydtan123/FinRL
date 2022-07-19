@@ -202,9 +202,61 @@ class StockTradingEnv(gym.Env):
             os.path.join(self.results_dir, F"account_value_{self.mode}_{self.model_name}_{self.iteration}.png"))
         plt.close()
 
+
     def step(self, actions):
-        self.terminal = self.day >= len(self.df.index.unique()) - 1
+        #print(F"Step: Day {self.day}, total days: {len(self.df.index.unique())}")
+
+        actions = actions * self.hmax  # actions initially is scaled between 0 to 1
+        actions = actions.astype(int)  # convert into integer because we can't by fraction of shares
+        if self.turbulence_threshold is not None:
+            if self.turbulence >= self.turbulence_threshold:
+                actions = np.array([-self.hmax] * self.stock_dim)
+        begin_total_asset = self.state[0] + sum(
+            np.array(self.state[1 : (self.stock_dim + 1)])
+            * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+        )
+        # print("begin_total_asset:{}".format(begin_total_asset))
+
+        argsort_actions = np.argsort(actions)
+        sell_index = argsort_actions[: np.where(actions < 0)[0].shape[0]]
+        buy_index = argsort_actions[::-1][: np.where(actions > 0)[0].shape[0]]
+
+        for index in sell_index:
+            # print(f"Num shares before: {self.state[index+self.stock_dim+1]}")
+            # print(f'take sell action before : {actions[index]}')
+            actions[index] = self._sell_stock(index, actions[index]) * (-1)
+            # print(f'take sell action after : {actions[index]}')
+            # print(f"Num shares after: {self.state[index+self.stock_dim+1]}")
+
+        for index in buy_index:
+            # print('take buy action: {}'.format(actions[index]))
+            actions[index] = self._buy_stock(index, actions[index])
+
+        self.actions_memory.append(actions)
+
+        # state: s -> s+1
+        self.data = self.df.loc[self.day, :]
+        if self.turbulence_threshold is not None:
+            if self.num_ticks == 1:
+                self.turbulence = self.data[self.risk_indicator_col]
+            elif self.num_ticks > 1:
+                self.turbulence = self.data[self.risk_indicator_col].values[0]
+        self.state = self._update_state()
+
+        end_total_asset = self.state[0] + sum(
+            np.array(self.state[1 : (self.stock_dim + 1)])
+            * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+        )
+        self.asset_memory.append(end_total_asset)
+        self.date_memory.append(self._get_date())
+        self.reward = end_total_asset - begin_total_asset
+        self.rewards_memory.append(self.reward)
+        self.reward = self.reward * self.reward_scaling
+        self.state_memory.append(self.state) # add current state in state_recorder for each step
+
+        self.terminal = (self.day >= (len(self.df.index.unique()) - 1))
         if self.terminal:
+            print("Hit the terminal day!!")
             end_total_asset = self.state[0] + sum(
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
@@ -266,65 +318,13 @@ class StockTradingEnv(gym.Env):
             # logger.record("environment/total_reward_pct", (tot_reward / (end_total_asset - tot_reward)) * 100)
             # logger.record("environment/total_cost", self.cost)
             # logger.record("environment/total_trades", self.trades)
-
-            return self.state, self.reward, self.terminal, {}
-
-        else:
-            actions = actions * self.hmax  # actions initially is scaled between 0 to 1
-            actions = actions.astype(int)  # convert into integer because we can't by fraction of shares
-            if self.turbulence_threshold is not None:
-                if self.turbulence >= self.turbulence_threshold:
-                    actions = np.array([-self.hmax] * self.stock_dim)
-            begin_total_asset = self.state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
-            )
-            # print("begin_total_asset:{}".format(begin_total_asset))
-
-            argsort_actions = np.argsort(actions)
-            sell_index = argsort_actions[: np.where(actions < 0)[0].shape[0]]
-            buy_index = argsort_actions[::-1][: np.where(actions > 0)[0].shape[0]]
-
-            for index in sell_index:
-                # print(f"Num shares before: {self.state[index+self.stock_dim+1]}")
-                # print(f'take sell action before : {actions[index]}')
-                actions[index] = self._sell_stock(index, actions[index]) * (-1)
-                # print(f'take sell action after : {actions[index]}')
-                # print(f"Num shares after: {self.state[index+self.stock_dim+1]}")
-
-            for index in buy_index:
-                # print('take buy action: {}'.format(actions[index]))
-                actions[index] = self._buy_stock(index, actions[index])
-
-            self.actions_memory.append(actions)
-
-            # state: s -> s+1
-            self.day += 1
-            self.data = self.df.loc[self.day, :]
-            if self.turbulence_threshold is not None:
-                if self.num_ticks == 1:
-                    self.turbulence = self.data[self.risk_indicator_col]
-                elif self.num_ticks > 1:
-                    self.turbulence = self.data[self.risk_indicator_col].values[0]
-            self.state = self._update_state()
-
-            end_total_asset = self.state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
-            )
-            self.asset_memory.append(end_total_asset)
-            self.date_memory.append(self._get_date())
-            self.reward = end_total_asset - begin_total_asset
-            self.rewards_memory.append(self.reward)
-            self.reward = self.reward * self.reward_scaling
-            self.state_memory.append(self.state) # add current state in state_recorder for each step
+        self.day += 1
 
         return self.state, self.reward, self.terminal, {}
 
     def reset(self):
         # initiate state
         self.state = self._initiate_state()
-
         if self.initial:
             self.asset_memory = [self.initial_amount+np.sum(np.array(self.num_stock_shares)*np.array(self.state[1:1+self.stock_dim]))]
         else:
@@ -335,9 +335,11 @@ class StockTradingEnv(gym.Env):
                 )
             )
             self.asset_memory = [previous_total_asset]
+        print(F"Total asset={previous_total_asset if not self.initial else self.initial_amount}")
 
-        self.day = 0
-        self.data = self.df.loc[self.day, :]
+        if self.initial:
+            self.day = 0
+            self.data = self.df.loc[self.day, :]
         self.turbulence = 0
         self.cost = 0
         self.trades = 0

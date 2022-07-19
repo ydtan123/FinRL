@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from cProfile import label
+from mimetypes import encodings_map
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -113,7 +114,7 @@ def train_ensemble(data, start, end, val_split, results_dir):
     val_start = val_split
     val_end = end
 
-    env_kwargs, _, _ = get_params(data)
+    env_kwargs = get_params(data)
     ensemble_agent = DRLEnsembleAgent(df=data,
                      train_period=(train_start,train_end),
                      val_test_period=(val_start,val_end),
@@ -160,7 +161,7 @@ def train_ensemble(data, start, end, val_split, results_dir):
 
     df_account_value=pd.DataFrame()
     for i in range(rebalance_window+validation_window, len(unique_trade_date)+1,rebalance_window):
-        temp = pd.read_csv(os.path.join(config.RESULTS_DIR, F'account_value_trade_ensemble_{i}.csv'))
+        temp = pd.read_csv(os.path.join(results_dir, F'account_value_trade_ensemble_{i}.csv'))
         df_account_value = df_account_value.append(temp,ignore_index=True)
     sharpe=(252**0.5)*df_account_value.account_value.pct_change(1).mean()/df_account_value.account_value.pct_change(1).std()
     print('Sharpe Ratio: ',sharpe)
@@ -212,8 +213,9 @@ def trade(model_dir, model_name, df, trade_start_date, results_dir):
     baseline_df = DataReader.get_ohlcv(['^DJI'], trade_start_date, last_date, version=1)
     stats = backtest_stats(baseline_df, value_col_name = 'close')
 
-
+from stable_baselines3 import A2C, DDPG, PPO
 def trade_one_model(model_name, model_file, df, start_date, end_date, results_dir):
+    #MODELS[model_name].set_random_seed(1)
     trained_model = MODELS[model_name].load(model_file)
 
     last_state = []
@@ -228,7 +230,7 @@ def trade_one_model(model_name, model_file, df, start_date, end_date, results_di
         start=start_date,
         end=end_date,
     )
-
+    logging.info(F"Trade data from {trade_data.iloc[0].date} to {trade_data.iloc[-1].date}")
     env_kwargs = get_params(trade_data)
 
     #results_dir = os.path.join(config.RESULTS_DIR, datetime.now().strftime('%Y%m%d%H%M'))
@@ -238,12 +240,12 @@ def trade_one_model(model_name, model_file, df, start_date, end_date, results_di
     dates = trade_data.date.unique()
     days = np.where(dates>=start_date)
     assert len(days) != 0
-    logging.info(F"Start trade from {start_date}, day {days[0][0]} to {dates[-1]}, day {len(trade_data.index.unique())}")
+    logging.info(F"Start trade from {start_date}, day {days[0][0]} to {dates[-1]}, day {len(trade_data.index.unique())-1}")
     for i in range(days[0][0], len(trade_data.index.unique())):
         last_state, action = trade_one_day(
             model_name, 
             trained_model,
-            trade_data.loc[:i+1, :], 
+            trade_data, 
             env_kwargs,
             last_state, 
             turbulence,
@@ -289,7 +291,7 @@ def trade_one_day(
                 previous_state=last_state,
                 model_name=model_name,
                 mode="trade",
-                iteration=0,
+                iteration=day,
                 print_verbosity=env_kwargs["print_verbosity"],
                 results_dir=results_dir,
                 day=day
@@ -299,12 +301,11 @@ def trade_one_day(
 
     trade_obs = trade_env.reset()
 
-    for i in range(len(trade_data.index.unique())):
-        action, _states = trained_model.predict(trade_obs)
-        trade_obs, rewards, dones, info = trade_env.step(action)
+    action, _states = trained_model.predict(trade_obs) #, deterministic=True)
+    trade_obs, rewards, dones, info = trade_env.step(action)
         #if i == (len(trade_data.index.unique()) - 2):
             # print(env_test.render())
-        last_state = trade_env.render()
+    last_state = trade_env.render()
         #pprint(action)
     return last_state, action
 
@@ -367,7 +368,7 @@ def compare_stat(data, func_name, ss_col, needhl=False, **kwargs):
     rsi_data.to_csv(F'{ss_col}.csv')
 
 def trade_job(ticks, model_dir, model_name):
-    yesterday = datetime.today() - timedelta(days=2)
+    yesterday = datetime.today() - timedelta(days=1)
     ystr = yesterday.strftime('%Y-%m-%d')
     first_day = datetime.today() - timedelta(days=500)  #must greater than one year, turbulence needs a window of 252 in front
     fstr = first_day.strftime('%Y-%m-%d')
@@ -377,7 +378,8 @@ def trade_job(ticks, model_dir, model_name):
     results_dir = os.path.join(config.RESULTS_DIR, F"trade_{datetime.now().strftime('%Y%m%d%H%M')}")
     Path(results_dir).mkdir(parents=True, exist_ok=True)
 
-    trade_start = datetime.today() - timedelta(days=3)
+    trade_start = datetime.strptime(data.iloc[-1].date,'%Y-%m-%d') - timedelta(days=500)
+    #trade_start = datetime.today() - timedelta(days=1)
     trade(model_dir, model_name, data, trade_start.strftime('%Y-%m-%d'), results_dir)
 
 def to_nyc_time(hour, minute):
@@ -408,7 +410,11 @@ if __name__ == '__main__':
     parser.add_argument("--run-now", help="run the trading job now", action='store_true')
     parser.add_argument("--compare", help="trade", action='store_true')
     args = parser.parse_args()
+    
+    #from tensorflow import random
 
+    #np.random.seed(0)
+    #random.set_seed(0)
     if args.ticks == 'DOW30' or args.ticks == '':
         ticks = config_tickers.DOW_30_TICKER
     else:
@@ -468,11 +474,11 @@ if __name__ == '__main__':
                 logging.info(F"Reschedule task because of django DB error: {e}")
                 every(1).minutes.do(
                     trade_job, 
-                ticks=ticks, 
-                model_dir=args.model_dir, 
-                model_name='ppo',
-                start_date=args.split_date,
-                end_date=args.end).tag('temp-trade-job')
+                    ticks=ticks, 
+                    model_dir=args.model_dir, 
+                    model_name='ppo',
+                    start_date=args.split_date,
+                    end_date=args.end).tag('temp-trade-job')
                     
     elif args.compare:
         """compare tech indicator between stockstat and ta"""
