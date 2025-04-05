@@ -426,6 +426,7 @@ class DRLEnsembleAgent:
         SAC_model_kwargs,
         TD3_model_kwargs,
         timesteps_dict,
+        MODELS=MODELS
     ):
         # Model Parameters
         kwargs = {
@@ -572,6 +573,8 @@ class DRLEnsembleAgent:
             # print("training: ",len(data_split(df, start=20090000, end=test.datadate.unique()[i-rebalance_window]) ))
             # print("==============Model Training===========")
             # Train Each Model
+            print(f"Selected models: {MODELS.keys()}")
+
             for model_name in MODELS.keys():
                 # Train The Model
                 model, sharpe_list, sharpe = self._train_window(
@@ -646,24 +649,15 @@ class DRLEnsembleAgent:
                 iteration_list,
                 validation_start_date_list,
                 validation_end_date_list,
-                model_use,
-                model_dct["a2c"]["sharpe_list"],
-                model_dct["ppo"]["sharpe_list"],
-                model_dct["ddpg"]["sharpe_list"],
-                model_dct["sac"]["sharpe_list"],
-                model_dct["td3"]["sharpe_list"],
+                model_use] +
+            [
+                model_dct[m]["sharpe_list"] for m in MODELS.keys()
             ]
         ).T
         df_summary.columns = [
             "Iter",
             "Val Start",
             "Val End",
-            "Model Used",
-            "A2C Sharpe",
-            "PPO Sharpe",
-            "DDPG Sharpe",
-            "SAC Sharpe",
-            "TD3 Sharpe",
-        ]
+            "Model Used"] + [f"{m.upper()} Sharpe" for m in MODELS.keys()]
 
         return df_summary
