@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore")
 
 import datetime
 import itertools
+import json
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,70 +24,56 @@ from finrl.plot import backtest_stats, backtest_plot, get_daily_return, get_base
 sys.path.append("../FinRL-Library")
 
 from data_reader import DataReader
-
 from finrl.main import check_and_make_directories
-from finrl.config import (
-    DATA_SAVE_DIR,
-    TRAINED_MODEL_DIR,
-    TENSORBOARD_LOG_DIR,
-    RESULTS_DIR,
-    INDICATORS,
-    TRAIN_START_DATE,
-    TRAIN_END_DATE,
-    TEST_START_DATE,
-    TEST_END_DATE,
-    TRADE_START_DATE,
-    TRADE_END_DATE,
-)
-
-check_and_make_directories([DATA_SAVE_DIR, TRAINED_MODEL_DIR, TENSORBOARD_LOG_DIR, RESULTS_DIR])
-
 from finrl.meta.preprocessor.yahoodownloader import YahooDownloader
+from finrl.meta.preprocessor.preprocessors import FeatureEngineer
 from finrl.config_tickers import DOW_30_TICKER
 
-TRAIN_START_DATE = '2010-01-01'
-TRAIN_END_DATE = '2021-10-01'
-TEST_START_DATE = '2021-10-01'
-TEST_END_DATE = '2023-03-01'
+def prepare_data(ticks, indicators, start_date, end_date):
+    df = DataReader('prediction_dailyprice').get_data_for(ticks, start_date, end_date)
 
-#df = YahooDownloader(start_date = TRAIN_START_DATE,
-#                     end_date = TEST_END_DATE,
-#                     ticker_list = DOW_30_TICKER).fetch_data()
-df = DataReader('prediction_dailyprice').get_data_for(
-    ['MSFT'], start_date=TRAIN_START_DATE, end_date=TEST_END_DATE)
+    df.rename(columns={
+        'Tick': 'tic',
+        'Date': 'date',
+        'Open': 'open',
+        'High': 'high',
+        'Low': 'low',
+        'Close': 'close',
+        'Volume': 'volume',
+        'AdjVolume': 'adj_volume'}, inplace=True)
+    print(df.head())
 
-df.rename(columns={
-    'Tick': 'tic',
-    'Date': 'date',
-    'Open': 'open',
-    'High': 'high',
-    'Low': 'low',
-    'Close': 'close',
-    'Volume': 'volume',
-    'AdjVolume': 'adj_volume'}, inplace=True)
-print(df.head())
+    fe = FeatureEngineer(use_technical_indicator=True,
+                        tech_indicator_list = indicators,
+                        use_turbulence=True,
+                        user_defined_feature = False)
 
-INDICATORS = ['macd',
-              'rsi_30',
-              'cci_30',
-              'dx_30']
+    processed = fe.preprocess_data(df)
+    processed = processed.copy()
+    processed = processed.fillna(0)
+    processed = processed.replace(np.inf,0)
 
-from finrl.meta.preprocessor.preprocessors import FeatureEngineer
-fe = FeatureEngineer(use_technical_indicator=True,
-                     tech_indicator_list = INDICATORS,
-                     use_turbulence=True,
-                     user_defined_feature = False)
+    return processed
 
-processed = fe.preprocess_data(df)
-processed = processed.copy()
-processed = processed.fillna(0)
-processed = processed.replace(np.inf,0)
 
+with open('ensemble.config') as f:
+    config = json.load(f)
+
+check_and_make_directories(
+    [config["DATA_SAVE_DIR"],
+     config["TRAINED_MODEL_DIR"],
+     config["TENSORBOARD_LOG_DIR"],
+     config["RESULTS_DIR"]])
+
+processed = prepare_data(
+    DOW_30_TICKER,
+    indicators=config["INDICATORS"],
+    start_date=config['TRAIN_START_DATE'],
+    end_date=config['TEST_END_DATE'])
 
 stock_dimension = len(processed.tic.unique())
-state_space = 1 + 2*stock_dimension + len(INDICATORS)*stock_dimension
+state_space = 1 + 2*stock_dimension + len(config['INDICATORS'])*stock_dimension
 print(f"Stock Dimension: {stock_dimension}, State Space: {state_space}")
-
 
 env_kwargs = {
     "hmax": 100,
@@ -95,72 +82,34 @@ env_kwargs = {
     "sell_cost_pct": 0.001,
     "state_space": state_space,
     "stock_dim": stock_dimension,
-    "tech_indicator_list": INDICATORS,
+    "tech_indicator_list": config["INDICATORS"],
     "action_space": stock_dimension,
     "reward_scaling": 1e-4,
     "print_verbosity":5
-
 }
 
 rebalance_window = 63 # rebalance_window is the number of days to retrain the model
 validation_window = 63 # validation_window is the number of days to do validation and trading (e.g. if validation_window=63, then both validation and trading period will be 63 days)
-
-ensemble_agent = DRLEnsembleAgent(df=processed,
-                 train_period=(TRAIN_START_DATE,TRAIN_END_DATE),
-                 val_test_period=(TEST_START_DATE,TEST_END_DATE),
-                 rebalance_window=rebalance_window,
-                 validation_window=validation_window,
-                 **env_kwargs)
-
-
-A2C_model_kwargs = {
-                    'n_steps': 5,
-                    'ent_coef': 0.005,
-                    'learning_rate': 0.0007
-                    }
-
-PPO_model_kwargs = {
-                    "ent_coef":0.01,
-                    "n_steps": 2048,
-                    "learning_rate": 0.00025,
-                    "batch_size": 128
-                    }
-
-DDPG_model_kwargs = {
-                      #"action_noise":"ornstein_uhlenbeck",
-                      "buffer_size": 10_000,
-                      "learning_rate": 0.0005,
-                      "batch_size": 64
-                    }
-
-SAC_model_kwargs = {
-    "batch_size": 64,
-    "buffer_size": 100000,
-    "learning_rate": 0.0001,
-    "learning_starts": 100,
-    "ent_coef": "auto_0.1",
-}
-
-TD3_model_kwargs = {"batch_size": 100, "buffer_size": 1000000, "learning_rate": 0.0001}
+ensemble_agent = DRLEnsembleAgent(
+    df=processed,
+    train_period=(config["TRAIN_START_DATE"], config["TRAIN_END_DATE"]),
+    val_test_period=(config["TEST_START_DATE"], config["TEST_END_DATE"]),
+    rebalance_window=rebalance_window,
+    validation_window=validation_window,
+    **env_kwargs)
 
 
-timesteps_dict = {'a2c' : 10_000,
-                 'ppo' : 10_000,
-                 'ddpg' : 10_000,
-                 'sac' : 10_000,
-                 'td3' : 10_000
-                 }
+from stable_baselines3 import A2C, PPO, DDPG, SAC, TD3
+df_summary = ensemble_agent.run_ensemble_strategy(
+    config['A2C_model_kwargs'],
+    config['PPO_model_kwargs'],
+    config['DDPG_model_kwargs'],
+    config['SAC_model_kwargs'],
+    config['TD3_model_kwargs'],
+    config['timesteps_dict'],
+    MODELS={"a2c": A2C, "ppo": PPO, "ddpg": DDPG, "sac": SAC, "td3": TD3},)
 
-from stable_baselines3 import A2C
-df_summary = ensemble_agent.run_ensemble_strategy(A2C_model_kwargs,
-                                                 PPO_model_kwargs,
-                                                 DDPG_model_kwargs,
-                                                 SAC_model_kwargs,
-                                                 TD3_model_kwargs,
-                                                 timesteps_dict,
-                                                 MODELS={"a2c": A2C})
-
-unique_trade_date = processed[(processed.date > TEST_START_DATE)&(processed.date <= TEST_END_DATE)].date.unique()
+unique_trade_date = processed[(processed.date > config["TEST_START_DATE"])&(processed.date <= config["TEST_END_DATE"])].date.unique()
 
 df_trade_date = pd.DataFrame({'datadate':unique_trade_date})
 

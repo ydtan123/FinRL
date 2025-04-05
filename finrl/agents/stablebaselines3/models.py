@@ -617,8 +617,12 @@ class DRLEnsembleAgent:
             # Model Selection based on sharpe ratio
             # Same order as MODELS: {"a2c": A2C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
             sharpes = [model_dct[k]["sharpe"] for k in MODELS.keys()]
+            print(f"Sharpe Ratios: {dict(zip(MODELS.keys(), sharpes))}")
             # Find the model with the highest sharpe ratio
             max_mod = list(MODELS.keys())[np.argmax(sharpes)]
+            print(
+                f"Best Model: {max_mod.upper()} with Sharpe Ratio: {model_dct[max_mod]['sharpe']}"
+            )
             model_use.append(max_mod.upper())
             model_ensemble = model_dct[max_mod]["model"]
             # Training and Validation ends
