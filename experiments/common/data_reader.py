@@ -25,16 +25,6 @@ class DataReader(object):
             (self.data_table['Tick'].isin(ticks)) & (self.data_table['Date'] >= start_date) & (self.data_table['Date'] <= end_date),
             ['Tick', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'AdjVolume']]
         df.dropna(inplace=True)
-        
-        print('--------------------------------------------------')
-        print(df.head())
-        print('--------------------------------------------------')
-        return df
-    
-
-    def prepare_data(self, ticks, indicators, start_date, end_date):
-        df = DataReader('prediction_dailyprice').get_data_for(ticks, start_date, end_date)
-
         df.rename(columns={
             'Tick': 'tic',
             'Date': 'date',
@@ -43,12 +33,38 @@ class DataReader(object):
             'Low': 'low',
             'Close': 'close',
             'Volume': 'volume',
-            'AdjVolume': 'adj_volume'}, inplace=True)
+            'AdjVolume': 'adj_volume'}, inplace=True)        
+        print('--------------------------------------------------')
         print(df.head())
+        print('--------------------------------------------------')
+        return df
+
+    def prepare_data(self, ticks, indicators, start_date, end_date):
+        
+        df = self.get_data_for(ticks, start_date, end_date)
+        vix = self.get_data_for(['^VIX'], start_date, end_date)
+        vix.dropna(inplace=True)
+        
+        print('--------------------------------------------------')
         print(f'Indicators: {indicators}')
+        print(df.head(2))
+        print("Vix: ", vix.head(2))
+        print('--------------------------------------------------')
+        
+        vix.rename(columns={
+            'Tick': 'tic',
+            'Date': 'date',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume',
+            'AdjVolume': 'adj_volume'}, inplace=True)
         fe = FeatureEngineer(use_technical_indicator=True,
                             tech_indicator_list = indicators,
                             use_turbulence=True,
+                            use_vix=True,
+                            vix=vix,
                             user_defined_feature = False)
 
         processed = fe.preprocess_data(df)

@@ -48,10 +48,10 @@ model_params = {
 
 def prepare_data(config):
     processed = DataReader('prediction_dailyprice').prepare_data(
-        DOW_30_TICKER,
+        DOW_30_TICKER + ['^VIX'],
         indicators=config["INDICATORS"],
         start_date=config['TRAIN_START_DATE'],
-        end_date=config['TEST_END_DATE'])
+        end_date=config['TRADE_END_DATE'])
 
     list_ticker = processed["tic"].unique().tolist()
     list_date = list(pd.date_range(processed['date'].min(),processed['date'].max()))
@@ -131,7 +131,9 @@ def trade(data, config, model_name):
         "reward_scaling": 1e-4
     }
     e_trade_gym = StockTradingEnv(
-        df = data, turbulence_threshold = 70, **env_kwargs)
+        df = data, 
+        make_plots=True,
+        turbulence_threshold = 70, risk_indicator_col='vix', **env_kwargs)
     model = models_map[model_name].load(
         os.path.join(config["TRAINED_MODEL_DIR"], model_name))
     print(f"Model {model_name} loaded from {config['TRAINED_MODEL_DIR']}/{model_name}")
